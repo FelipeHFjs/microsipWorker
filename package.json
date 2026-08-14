@@ -6,7 +6,7 @@
   "scripts": {
     "install:all": "npm install",
     "build": "tsc",
-    "start": "TZ=America/Chihuahua node dist/src/server.js",
+    "start": "TZ=America/Chihuahua node dist/server.js",
     "dev": "TZ=America/Chihuahua tsx watch src/server.ts"
   },
   "keywords": [],
