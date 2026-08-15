@@ -104,5 +104,3 @@ export function getCronNotificacionesStatus() {
     tasks: Array.from(activeTasks.keys()),
   }
 }
-
-startCronSyncNotificaciones()

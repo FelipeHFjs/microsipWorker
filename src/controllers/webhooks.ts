@@ -17,14 +17,11 @@ import { emitToContact } from '../services/sseManager.js'
 
 type ButtonAction = 'factura' | 'remision' | 'edc'
 const PDF_GENERATION_ERROR_MESSAGE = 'Ocurrio un error al generar PDF intente mas tarde'
-const OFFICE_FALLBACK_MESSAGE = `Hola soy el asistente virtual de Semillas Agrozona,
+const OFFICE_FALLBACK_MESSAGE = `Hola soy el asistente virtual de Carbansa (Industrias Banman),
 por el momento no tengo capacidad para responder mensajes,
 Favor de contactar una de las siguientes sucursales
-1. Campo 101: 6255841196
-2. Km7: 6255877419
-3. Oasis: 6264991718
-4. Guerrero: 6352948314
-5. Buenos Aires: 6255915601`
+1. Km 24: 6251024369
+2. Campo 101: 6251520094`
 
 function normalizeButtonText(text: string) {
   return text
@@ -77,7 +74,7 @@ export async function getWebhookStatus(req: Request, res: Response): Promise<voi
 
 export async function handleWebhookEvent(req: Request, res: Response): Promise<void> {
   const { entry } = req.body
-  console.log(req.body)
+
   if (!entry || entry.length === 0) {
     res.status(400).send('Invalid Request')
     return
@@ -93,290 +90,292 @@ export async function handleWebhookEvent(req: Request, res: Response): Promise<v
     return
   }
 
-  const statuses = value.statuses ? value.statuses[0] : null
-
-  if (statuses) {
-    const messageId = statuses.id
-    const status = statuses.status
-    const timestamp = statuses.timestamp
-
-    const contactWaId = await updateWhatsAppMessageStatus(messageId, status, timestamp)
-    if (contactWaId && ['sent', 'delivered', 'read', 'failed'].includes(status)) {
-      emitToContact(contactWaId, {
-        type: 'status_update',
-        contactWaId,
-        whatsapp_message_id: messageId,
-        status: status as 'sent' | 'delivered' | 'read' | 'failed',
-        timestamp: Number(timestamp),
-      })
+  // const statuses = value.statuses ? value.statuses[0] : null
+  if (value.statuses && value.statuses.length > 0) {
+    // loop through all statuses in case there are multiple
+    for (const statuses of value.statuses) {
+      const messageId = statuses.id
+      const status = statuses.status
+      const timestamp = statuses.timestamp
+      console.log(messageId, status, timestamp)
+      const contactWaId = await updateWhatsAppMessageStatus(messageId, status, timestamp)
+      if (contactWaId && ['sent', 'delivered', 'read', 'failed'].includes(status)) {
+        emitToContact(contactWaId, {
+          type: 'status_update',
+          contactWaId,
+          whatsapp_message_id: messageId,
+          status: status as 'sent' | 'delivered' | 'read' | 'failed',
+          timestamp: Number(timestamp),
+        })
+      }
     }
   }
 
-  // if (messages && messages.length > 0) {
-  //   for (const message of messages) {
-  //     const messageId = message.id
-  //     const from = message.from
-  //     const type = message.type
-  //     const contact = contacts?.find((c: any) => c.wa_id === from)
-  //     const contactName = contact?.profile?.name || 'Unknown'
-  //     let buttonAction: ButtonAction | null = null
-  //     let text = ''
-  //     let mediaData = null
+  if (messages && messages.length > 0) {
+    for (const message of messages) {
+      const messageId = message.id
+      const from = message.from
+      const type = message.type
+      const contact = contacts?.find((c: any) => c.wa_id === from)
+      const contactName = contact?.profile?.name || 'Unknown'
+      let buttonAction: ButtonAction | null = null
+      let text = ''
+      let mediaData = null
 
-  //     // Handle different message types
-  //     switch (type) {
-  //       case 'text':
-  //         text = message.text?.body || ''
-  //         break
+      // Handle different message types
+      switch (type) {
+        case 'text':
+          text = message.text?.body || ''
+          break
 
-  //       case 'image':
-  //         const imageId = message.image?.id
-  //         if (imageId) {
-  //           try {
-  //             const { buffer, mimeType, filename } = await downloadWhatsAppMedia(imageId)
+        case 'image':
+          const imageId = message.image?.id
+          if (imageId) {
+            try {
+              const { buffer, mimeType, filename } = await downloadWhatsAppMedia(imageId)
 
-  //             const s3Key = await uploadWhatsAppMedia(buffer, filename, mimeType, messageId)
+              const s3Key = await uploadWhatsAppMedia(buffer, filename, mimeType, messageId)
 
-  //             text = `Image received and stored`
-  //             mediaData = {
-  //               media_id: imageId,
-  //               s3_key: s3Key,
-  //               mime_type: mimeType,
-  //               sha256: message.image?.sha256,
-  //             }
-  //           } catch (error) {
-  //             console.error('Failed to process image:', error)
-  //             text = 'Image received (processing failed)'
-  //           }
-  //         }
-  //         break
+              text = `Image received and stored`
+              mediaData = {
+                media_id: imageId,
+                s3_key: s3Key,
+                mime_type: mimeType,
+                sha256: message.image?.sha256,
+              }
+            } catch (error) {
+              console.error('Failed to process image:', error)
+              text = 'Image received (processing failed)'
+            }
+          }
+          break
 
-  //       case 'document':
-  //         const docId = message.document?.id
-  //         if (docId) {
-  //           try {
-  //             const { buffer, mimeType, filename } = await downloadWhatsAppMedia(docId)
+        case 'document':
+          const docId = message.document?.id
+          if (docId) {
+            try {
+              const { buffer, mimeType, filename } = await downloadWhatsAppMedia(docId)
 
-  //             const s3Key = await uploadWhatsAppMedia(
-  //               buffer,
-  //               message.document?.filename || filename,
-  //               mimeType,
-  //               messageId,
-  //             )
+              const s3Key = await uploadWhatsAppMedia(
+                buffer,
+                message.document?.filename || filename,
+                mimeType,
+                messageId,
+              )
 
-  //             text = `Document received: ${message.document?.filename || 'Unknown'}`
-  //             mediaData = {
-  //               media_id: docId,
-  //               s3_key: s3Key,
-  //               filename: message.document?.filename,
-  //               mime_type: mimeType,
-  //             }
-  //           } catch (error) {
-  //             console.error('Failed to process document:', error)
-  //             text = 'Document received (processing failed)'
-  //           }
-  //         }
-  //         break
+              text = `Document received: ${message.document?.filename || 'Unknown'}`
+              mediaData = {
+                media_id: docId,
+                s3_key: s3Key,
+                filename: message.document?.filename,
+                mime_type: mimeType,
+              }
+            } catch (error) {
+              console.error('Failed to process document:', error)
+              text = 'Document received (processing failed)'
+            }
+          }
+          break
 
-  //       case 'audio':
-  //         const audioId = message.audio?.id
-  //         if (audioId) {
-  //           try {
-  //             const { buffer, mimeType, filename } = await downloadWhatsAppMedia(audioId)
+        case 'audio':
+          const audioId = message.audio?.id
+          if (audioId) {
+            try {
+              const { buffer, mimeType, filename } = await downloadWhatsAppMedia(audioId)
 
-  //             const s3Key = await uploadWhatsAppMedia(buffer, filename, mimeType, messageId)
+              const s3Key = await uploadWhatsAppMedia(buffer, filename, mimeType, messageId)
 
-  //             text = `Audio received`
-  //             mediaData = {
-  //               media_id: audioId,
-  //               s3_key: s3Key,
-  //               mime_type: mimeType,
-  //             }
-  //           } catch (error) {
-  //             console.error('Failed to process audio:', error)
-  //             text = 'Audio received (processing failed)'
-  //           }
-  //         }
-  //         break
+              text = `Audio received`
+              mediaData = {
+                media_id: audioId,
+                s3_key: s3Key,
+                mime_type: mimeType,
+              }
+            } catch (error) {
+              console.error('Failed to process audio:', error)
+              text = 'Audio received (processing failed)'
+            }
+          }
+          break
 
-  //       case 'video':
-  //         const videoId = message.video?.id
-  //         if (videoId) {
-  //           try {
-  //             const { buffer, mimeType, filename } = await downloadWhatsAppMedia(videoId)
+        case 'video':
+          const videoId = message.video?.id
+          if (videoId) {
+            try {
+              const { buffer, mimeType, filename } = await downloadWhatsAppMedia(videoId)
 
-  //             const s3Key = await uploadWhatsAppMedia(buffer, filename, mimeType, messageId)
+              const s3Key = await uploadWhatsAppMedia(buffer, filename, mimeType, messageId)
 
-  //             text = `Video received`
-  //             mediaData = {
-  //               media_id: videoId,
-  //               s3_key: s3Key,
-  //               mime_type: mimeType,
-  //             }
-  //           } catch (error) {
-  //             console.error('Failed to process video:', error)
-  //             text = 'Video received (processing failed)'
-  //           }
-  //         }
-  //         break
+              text = `Video received`
+              mediaData = {
+                media_id: videoId,
+                s3_key: s3Key,
+                mime_type: mimeType,
+              }
+            } catch (error) {
+              console.error('Failed to process video:', error)
+              text = 'Video received (processing failed)'
+            }
+          }
+          break
 
-  //       case 'sticker':
-  //         const stickerId = message.sticker?.id
-  //         if (stickerId) {
-  //           try {
-  //             const { buffer, mimeType, filename } = await downloadWhatsAppMedia(stickerId)
+        case 'sticker':
+          const stickerId = message.sticker?.id
+          if (stickerId) {
+            try {
+              const { buffer, mimeType, filename } = await downloadWhatsAppMedia(stickerId)
 
-  //             const s3Key = await uploadWhatsAppMedia(buffer, filename, mimeType, messageId)
+              const s3Key = await uploadWhatsAppMedia(buffer, filename, mimeType, messageId)
 
-  //             text = `Sticker received`
-  //             mediaData = {
-  //               media_id: stickerId,
-  //               s3_key: s3Key,
-  //               mime_type: mimeType,
-  //               sha256: message.sticker?.sha256,
-  //             }
-  //           } catch (error) {
-  //             console.error('Failed to process sticker:', error)
-  //             text = 'Sticker received (processing failed)'
-  //           }
-  //         }
-  //         break
+              text = `Sticker received`
+              mediaData = {
+                media_id: stickerId,
+                s3_key: s3Key,
+                mime_type: mimeType,
+                sha256: message.sticker?.sha256,
+              }
+            } catch (error) {
+              console.error('Failed to process sticker:', error)
+              text = 'Sticker received (processing failed)'
+            }
+          }
+          break
 
-  //       case 'button':
-  //         const buttonText = message.button?.text || ''
-  //         const buttonPayload = message.button?.payload || ''
-  //         const contextId = message.context?.id || null
-  //         const contextFrom = message.context?.from || null
+        case 'button':
+          const buttonText = message.button?.text || ''
+          const buttonPayload = message.button?.payload || ''
+          const contextId = message.context?.id || null
+          const contextFrom = message.context?.from || null
 
-  //         text = `Button clicked: ${buttonText}`
-  //         mediaData = {
-  //           button_text: buttonText,
-  //           button_payload: buttonPayload,
-  //           context_message_id: contextId,
-  //           context_from: contextFrom,
-  //         }
+          text = `Button clicked: ${buttonText}`
+          mediaData = {
+            button_text: buttonText,
+            button_payload: buttonPayload,
+            context_message_id: contextId,
+            context_from: contextFrom,
+          }
 
-  //         const normalizedButtonText = normalizeButtonText(buttonText)
-  //         if (normalizedButtonText === 'ver factura') {
-  //           buttonAction = 'factura'
-  //         } else if (normalizedButtonText === 'ver remision') {
-  //           buttonAction = 'remision'
-  //         } else if (normalizedButtonText === 'estado de cuenta') {
-  //           buttonAction = 'edc'
-  //         }
-  //         break
+          const normalizedButtonText = normalizeButtonText(buttonText)
+          if (normalizedButtonText === 'ver factura') {
+            buttonAction = 'factura'
+          } else if (normalizedButtonText === 'ver remision') {
+            buttonAction = 'remision'
+          } else if (normalizedButtonText === 'estado de cuenta') {
+            buttonAction = 'edc'
+          }
+          break
 
-  //       case 'interactive':
-  //         const interactiveType = message.interactive?.type
-  //         const interactiveTitle =
-  //           message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || ''
-  //         const interactivePayload = message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || ''
-  //         const interactiveContextId = message.context?.id || null
-  //         const interactiveContextFrom = message.context?.from || null
+        case 'interactive':
+          const interactiveType = message.interactive?.type
+          const interactiveTitle =
+            message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || ''
+          const interactivePayload = message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || ''
+          const interactiveContextId = message.context?.id || null
+          const interactiveContextFrom = message.context?.from || null
 
-  //         text = `Interactive reply: ${interactiveTitle || interactiveType || 'unknown'}`
-  //         mediaData = {
-  //           interactive_type: interactiveType,
-  //           button_text: interactiveTitle,
-  //           button_payload: interactivePayload,
-  //           context_message_id: interactiveContextId,
-  //           context_from: interactiveContextFrom,
-  //         }
+          text = `Interactive reply: ${interactiveTitle || interactiveType || 'unknown'}`
+          mediaData = {
+            interactive_type: interactiveType,
+            button_text: interactiveTitle,
+            button_payload: interactivePayload,
+            context_message_id: interactiveContextId,
+            context_from: interactiveContextFrom,
+          }
 
-  //         const normalizedInteractiveTitle = normalizeButtonText(interactiveTitle)
-  //         if (interactiveType === 'button_reply') {
-  //           if (normalizedInteractiveTitle === 'ver factura') {
-  //             buttonAction = 'factura'
-  //           } else if (normalizedInteractiveTitle === 'ver remision') {
-  //             buttonAction = 'remision'
-  //           } else if (normalizedInteractiveTitle === 'estado de cuenta') {
-  //             buttonAction = 'edc'
-  //           }
-  //         }
-  //         break
+          const normalizedInteractiveTitle = normalizeButtonText(interactiveTitle)
+          if (interactiveType === 'button_reply') {
+            if (normalizedInteractiveTitle === 'ver factura') {
+              buttonAction = 'factura'
+            } else if (normalizedInteractiveTitle === 'ver remision') {
+              buttonAction = 'remision'
+            } else if (normalizedInteractiveTitle === 'estado de cuenta') {
+              buttonAction = 'edc'
+            }
+          }
+          break
 
-  //       default:
-  //         text = `${type} message received`
-  //         break
-  //     }
+        default:
+          text = `${type} message received`
+          break
+      }
 
-  //     await insertWhatsAppMessage({
-  //       whatsappMessageId: messageId,
-  //       contactWaId: from,
-  //       contactName,
-  //       messageType: type,
-  //       messageText: text,
-  //       direction: 'incoming',
-  //       messageData: {
-  //         ...message,
-  //         uploaded_media: mediaData,
-  //       },
-  //     })
+      await insertWhatsAppMessage({
+        whatsappMessageId: messageId,
+        contactWaId: from,
+        contactName,
+        messageType: type,
+        messageText: text,
+        direction: 'incoming',
+        messageData: {
+          ...message,
+          uploaded_media: mediaData,
+        },
+      })
 
-  //     // Notify any open SSE clients watching this contact
-  //     emitToContact(from, { type: 'new_message', contactWaId: from })
+      // Notify any open SSE clients watching this contact
+      emitToContact(from, { type: 'new_message', contactWaId: from })
 
-  //     if (shouldSendOfficeFallback(type, text)) {
-  //       try {
-  //         const sent = await sendTextReplyToWABA(from, OFFICE_FALLBACK_MESSAGE)
-  //         const sentMessageId = sent?.messages?.[0]?.id
+      if (shouldSendOfficeFallback(type, text)) {
+        try {
+          const sent = await sendTextReplyToWABA(from, OFFICE_FALLBACK_MESSAGE)
+          const sentMessageId = sent?.messages?.[0]?.id
 
-  //         if (sentMessageId) {
-  //           await insertWhatsAppMessage({
-  //             whatsappMessageId: sentMessageId,
-  //             contactWaId: from,
-  //             contactName,
-  //             messageType: 'text',
-  //             messageText: OFFICE_FALLBACK_MESSAGE,
-  //             direction: 'outgoing',
-  //             messageData: {
-  //               id: sentMessageId,
-  //               to: from,
-  //               type: 'text',
-  //               text: { body: OFFICE_FALLBACK_MESSAGE },
-  //               related_context_message_id: messageId,
-  //             },
-  //           })
-  //         }
-  //       } catch (error) {
-  //         console.error('Failed to send office fallback message:', error)
-  //       }
-  //     }
+          if (sentMessageId) {
+            await insertWhatsAppMessage({
+              whatsappMessageId: sentMessageId,
+              contactWaId: from,
+              contactName,
+              messageType: 'text',
+              messageText: OFFICE_FALLBACK_MESSAGE,
+              direction: 'outgoing',
+              messageData: {
+                id: sentMessageId,
+                to: from,
+                type: 'text',
+                text: { body: OFFICE_FALLBACK_MESSAGE },
+                related_context_message_id: messageId,
+              },
+            })
+          }
+        } catch (error) {
+          console.error('Failed to send office fallback message:', error)
+        }
+      }
 
-  //     if (buttonAction) {
-  //       try {
-  //         await handleButtonReply(message, from, contactName, buttonAction)
-  //       } catch (error) {
-  //         console.error(`Failed to handle ${buttonAction} button reply:`, error)
-  //         try {
-  //           const sent = await sendTextReplyToWABA(from, PDF_GENERATION_ERROR_MESSAGE)
-  //           const sentMessageId = sent?.messages?.[0]?.id
-  //           if (sentMessageId) {
-  //             await insertWhatsAppMessage({
-  //               whatsappMessageId: sentMessageId,
-  //               contactWaId: from,
-  //               contactName,
-  //               messageType: 'text',
-  //               messageText: PDF_GENERATION_ERROR_MESSAGE,
-  //               direction: 'outgoing',
-  //               messageData: {
-  //                 id: sentMessageId,
-  //                 to: from,
-  //                 type: 'text',
-  //                 text: { body: PDF_GENERATION_ERROR_MESSAGE },
-  //                 related_context_message_id: messageId,
-  //               },
-  //             })
-  //           }
-  //         } catch (replyError) {
-  //           console.error('Failed to send PDF error fallback message:', replyError)
-  //         }
-  //       }
-  //     }
-  //   }
-  // }
+      if (buttonAction) {
+        try {
+          await handleButtonReply(message, from, contactName, buttonAction)
+        } catch (error) {
+          console.error(`Failed to handle ${buttonAction} button reply:`, error)
+          try {
+            const sent = await sendTextReplyToWABA(from, PDF_GENERATION_ERROR_MESSAGE)
+            const sentMessageId = sent?.messages?.[0]?.id
+            if (sentMessageId) {
+              await insertWhatsAppMessage({
+                whatsappMessageId: sentMessageId,
+                contactWaId: from,
+                contactName,
+                messageType: 'text',
+                messageText: PDF_GENERATION_ERROR_MESSAGE,
+                direction: 'outgoing',
+                messageData: {
+                  id: sentMessageId,
+                  to: from,
+                  type: 'text',
+                  text: { body: PDF_GENERATION_ERROR_MESSAGE },
+                  related_context_message_id: messageId,
+                },
+              })
+            }
+          } catch (replyError) {
+            console.error('Failed to send PDF error fallback message:', replyError)
+          }
+        }
+      }
+    }
+  }
 
-  // res.status(200).send('Webhook processed')
+  res.status(200).send('Webhook processed')
 }
 
 async function sendPdfReply(

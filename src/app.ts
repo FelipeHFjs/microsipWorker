@@ -4,15 +4,20 @@ import { fileURLToPath } from 'url'
 import { errorHandler } from './middlewares/errorHandler.js'
 import apiRoutes from './routes/apiRoutes.js'
 import { startCronSyncNotificaciones } from './services/cronNotificaciones.js'
+import dotenv from 'dotenv'
+
+dotenv.config()
 
 const app = express()
 
 app.use(express.json())
 
-startCronSyncNotificaciones().catch((error) => {
-  console.error('Error starting cron sync for notifications:', error)
-  process.exit(1) // Exit the process if cron fails to start
-})
+if (process.env.NODE_ENV === 'production') {
+  startCronSyncNotificaciones().catch((error) => {
+    console.error('Error starting cron sync for notifications:', error)
+    process.exit(1) // Exit the process if cron fails to start
+  })
+}
 
 // Routes
 app.use('/api', apiRoutes)
